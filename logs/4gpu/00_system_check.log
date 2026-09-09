@@ -1,0 +1,167 @@
+=== timestamp ===
+Wed Sep  9 10:07:38 UTC 2026
+=== hostname ===
+ee22f0129d68
+=== nvidia-smi ===
+Wed Sep  9 10:07:38 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 580.159.03             Driver Version: 580.159.03     CUDA Version: 13.1     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA A100-SXM4-40GB          On  |   00000000:0F:00.0 Off |                    0 |
+| N/A   30C    P0             52W /  400W |       0MiB /  40960MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+|   1  NVIDIA A100-SXM4-40GB          On  |   00000000:15:00.0 Off |                    0 |
+| N/A   29C    P0             54W /  400W |       0MiB /  40960MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+|   2  NVIDIA A100-SXM4-40GB          On  |   00000000:51:00.0 Off |                    0 |
+| N/A   30C    P0             53W /  400W |       0MiB /  40960MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+|   3  NVIDIA A100-SXM4-40GB          On  |   00000000:54:00.0 Off |                    0 |
+| N/A   30C    P0             51W /  400W |       0MiB /  40960MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+=== nvidia-smi topo -m ===
+	[4mGPU0	GPU1	GPU2	GPU3	NIC0	NIC1	NIC2	NIC3	NIC4	NIC5	NIC6	NIC7	NIC8	NIC9	NIC10	NIC11	NIC12	NIC13	NIC14	NIC15	NIC16	NIC17	CPU Affinity	NUMA Affinity	GPU NUMA ID[0m
+GPU0	 X 	NV12	NV12	NV12	SYS	SYS	SYS	SYS	SYS	SYS	PXB	PXB	PXB	PXB	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	24-31,88-95	3		N/A
+GPU1	NV12	 X 	NV12	NV12	SYS	SYS	SYS	SYS	SYS	SYS	PXB	PXB	PXB	PXB	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	24-31,88-95	3		N/A
+GPU2	NV12	NV12	 X 	NV12	PXB	PXB	PXB	PXB	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	8-15,72-79	1		N/A
+GPU3	NV12	NV12	NV12	 X 	PXB	PXB	PXB	PXB	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	8-15,72-79	1		N/A
+NIC0	SYS	SYS	PXB	PXB	 X 	PIX	PXB	PXB	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS				
+NIC1	SYS	SYS	PXB	PXB	PIX	 X 	PXB	PXB	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS				
+NIC2	SYS	SYS	PXB	PXB	PXB	PXB	 X 	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS				
+NIC3	SYS	SYS	PXB	PXB	PXB	PXB	PIX	 X 	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS				
+NIC4	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	 X 	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS				
+NIC5	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PIX	 X 	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS				
+NIC6	PXB	PXB	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	 X 	PIX	PXB	PXB	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS				
+NIC7	PXB	PXB	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PIX	 X 	PXB	PXB	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS				
+NIC8	PXB	PXB	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PXB	PXB	 X 	PIX	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS				
+NIC9	PXB	PXB	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PXB	PXB	PIX	 X 	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS				
+NIC10	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	 X 	PIX	PXB	PXB	SYS	SYS	SYS	SYS				
+NIC11	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PIX	 X 	PXB	PXB	SYS	SYS	SYS	SYS				
+NIC12	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PXB	PXB	 X 	PIX	SYS	SYS	SYS	SYS				
+NIC13	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PXB	PXB	PIX	 X 	SYS	SYS	SYS	SYS				
+NIC14	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	 X 	PIX	PXB	PXB				
+NIC15	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PIX	 X 	PXB	PXB				
+NIC16	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PXB	PXB	 X 	PIX				
+NIC17	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	SYS	PXB	PXB	PIX	 X 				
+
+Legend:
+
+  X    = Self
+  SYS  = Connection traversing PCIe as well as the SMP interconnect between NUMA nodes (e.g., QPI/UPI)
+  NODE = Connection traversing PCIe as well as the interconnect between PCIe Host Bridges within a NUMA node
+  PHB  = Connection traversing PCIe as well as a PCIe Host Bridge (typically the CPU)
+  PXB  = Connection traversing multiple PCIe bridges (without traversing the PCIe Host Bridge)
+  PIX  = Connection traversing at most a single PCIe bridge
+  NV#  = Connection traversing a bonded set of # NVLinks
+
+NIC Legend:
+
+  NIC0: mlx5_0
+  NIC1: mlx5_1
+  NIC2: mlx5_2
+  NIC3: mlx5_3
+  NIC4: mlx5_4
+  NIC5: mlx5_5
+  NIC6: mlx5_6
+  NIC7: mlx5_7
+  NIC8: mlx5_8
+  NIC9: mlx5_9
+  NIC10: mlx5_10
+  NIC11: mlx5_11
+  NIC12: mlx5_12
+  NIC13: mlx5_13
+  NIC14: mlx5_14
+  NIC15: mlx5_15
+  NIC16: mlx5_16
+  NIC17: mlx5_17
+
+=== nvidia-smi nvlink -s ===
+GPU 0: NVIDIA A100-SXM4-40GB (UUID: GPU-d42707b6-387b-a278-7b14-eebd7c6e6806)
+	 Link 0: 25 GB/s
+	 Link 1: 25 GB/s
+	 Link 2: 25 GB/s
+	 Link 3: 25 GB/s
+	 Link 4: 25 GB/s
+	 Link 5: 25 GB/s
+	 Link 6: 25 GB/s
+	 Link 7: 25 GB/s
+	 Link 8: 25 GB/s
+	 Link 9: 25 GB/s
+	 Link 10: 25 GB/s
+	 Link 11: 25 GB/s
+GPU 1: NVIDIA A100-SXM4-40GB (UUID: GPU-f97b3b77-4563-8ddc-300a-089f62d27cb5)
+	 Link 0: 25 GB/s
+	 Link 1: 25 GB/s
+	 Link 2: 25 GB/s
+	 Link 3: 25 GB/s
+	 Link 4: 25 GB/s
+	 Link 5: 25 GB/s
+	 Link 6: 25 GB/s
+	 Link 7: 25 GB/s
+	 Link 8: 25 GB/s
+	 Link 9: 25 GB/s
+	 Link 10: 25 GB/s
+	 Link 11: 25 GB/s
+GPU 2: NVIDIA A100-SXM4-40GB (UUID: GPU-efd4aeb6-04b6-188b-7fff-0ed924704fd0)
+	 Link 0: 25 GB/s
+	 Link 1: 25 GB/s
+	 Link 2: 25 GB/s
+	 Link 3: 25 GB/s
+	 Link 4: 25 GB/s
+	 Link 5: 25 GB/s
+	 Link 6: 25 GB/s
+	 Link 7: 25 GB/s
+	 Link 8: 25 GB/s
+	 Link 9: 25 GB/s
+	 Link 10: 25 GB/s
+	 Link 11: 25 GB/s
+GPU 3: NVIDIA A100-SXM4-40GB (UUID: GPU-9c2d2f5f-cbcc-16a8-52d6-e9ac2b1470de)
+	 Link 0: 25 GB/s
+	 Link 1: 25 GB/s
+	 Link 2: 25 GB/s
+	 Link 3: 25 GB/s
+	 Link 4: 25 GB/s
+	 Link 5: 25 GB/s
+	 Link 6: 25 GB/s
+	 Link 7: 25 GB/s
+	 Link 8: 25 GB/s
+	 Link 9: 25 GB/s
+	 Link 10: 25 GB/s
+	 Link 11: 25 GB/s
+=== nvcc ===
+nvcc: NVIDIA (R) Cuda compiler driver
+Copyright (c) 2005-2025 NVIDIA Corporation
+Built on Tue_Dec_16_07:23:41_PM_PST_2025
+Cuda compilation tools, release 13.1, V13.1.115
+Build cuda_13.1.r13.1/compiler.37061995_0
+=== python ===
+Python 3.12.3
+=== pytorch ===
+torch: 2.10.0a0+a36e1d39eb.nv26.01.42222806
+torch CUDA: 13.1
+CUDA available: True
+GPU count: 4
+0 NVIDIA A100-SXM4-40GB mem_GB 39.5
+1 NVIDIA A100-SXM4-40GB mem_GB 39.5
+2 NVIDIA A100-SXM4-40GB mem_GB 39.5
+3 NVIDIA A100-SXM4-40GB mem_GB 39.5
+NCCL: (2, 29, 2)
+=== megatron ===
+megatron.core: /workspace/dp-tp-pp-lab/third_party/Megatron-LM/megatron/core/__init__.py
+be85fc5df550f2236a850ecbf0dd1bf1b4cb4814

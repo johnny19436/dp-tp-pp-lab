@@ -1,0 +1,9 @@
+profile,nccl_kernel_time_pct_est
+nsys_orig_dp4,59.5
+nsys_large_tp2,65.2
+nsys_large_tp2dp2,86.2
+nsys_large_pp2,71.9
+nsys_large_pp2dp2,88.6
+nsys_large_tp4,112.3
+nsys_large_pp4,100.0
+nsys_large_tp2pp2,108.1

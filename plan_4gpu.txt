@@ -1,0 +1,1240 @@
+# 4-GPU Single-Node Parallelism Experiment Plan
+# File: plan_4gpu.txt
+
+## Context
+
+You are taking over an existing single-node distributed-training lab repository that was originally built and validated on:
+
+- 2 × NVIDIA A100-SXM4-40GB
+- NVLink / NV12 between the two GPUs
+- Megatron-LM / Megatron Core
+- BF16
+- mock data
+- GPT-style training
+- NCCL microbenchmarks
+- Nsight Systems profiling
+- CSV result generation
+- PDF report generation
+
+IMPORTANT:
+
+You are a NEW agent. You should assume the existing codebase was written for the previous 2-GPU experiment.
+
+Do NOT blindly overwrite or replace the old experiment.
+
+Instead:
+
+1. Inspect the existing repository carefully.
+2. Understand how the previous 2-GPU scripts, result parsers, Nsight profiling, CSV generation, and report generation work.
+3. Reuse or generalize the existing code where appropriate.
+4. Create NEW 4-GPU experiment scripts/configurations/results while preserving the old 2-GPU experiment artifacts.
+5. Treat the old 2-GPU codebase as a reference implementation, not as something that is already correct for 4 GPUs.
+6. Explicitly validate all assumptions that change with world_size=4.
+
+The previous experiment already established the following measured behavior:
+
+- 1GPU throughput ≈ 16,172 tokens/s
+- DP2 throughput ≈ 31,666 tokens/s
+- DP2 strong-scaling efficiency ≈ 97.9%
+- DP2 weak-scaling efficiency ≈ 99.3%
+- TP2 throughput ≈ 19,620 tokens/s
+- TP2 peak allocated memory ≈ 17.5 GB
+- TP2 had heavy collective overhead in Nsight
+- PP2 could trade memory for throughput by changing microbatch size
+- The previous main model was approximately a 1.3B-class GPT-like model:
+  - num_layers = 24
+  - hidden_size = 2048
+  - ffn_hidden_size = 8192
+  - num_attention_heads = 16
+  - seq_length = 2048
+  - BF16
+  - global_batch_size = 64
+  - default micro_batch_size = 1
+  - mock data
+
+The purpose of this new experiment is NOT merely to rerun the same 2-GPU study with four GPUs.
+
+The new experiment should answer two new questions:
+
+A. How does the original model scale from 1 → 2 → 4 GPUs under pure Data Parallelism?
+
+B. What happens when the model is made large enough that a single 40 GB A100 can no longer train it, so that model parallelism becomes necessary?
+
+This is still SINGLE NODE ONLY.
+
+Do NOT work on:
+
+- RDMA
+- InfiniBand
+- RoCE
+- multi-node
+- FSDP
+- ZeRO
+- expert parallelism
+- context parallelism
+- FP8
+- offloading
+- heterogeneous GPUs
+
+unless specifically required to fix a correctness issue. If such a change is required, document it and ask before making it part of the main benchmark.
+
+--------------------------------------------------
+1. PRESERVE THE EXISTING 2-GPU EXPERIMENT
+--------------------------------------------------
+
+Before changing anything:
+
+- inspect the repository tree
+- inspect all existing:
+  - run scripts
+  - Megatron invocation scripts
+  - parsers
+  - CSV schemas
+  - plotting scripts
+  - Nsight scripts
+  - report generator
+  - README / report source
+- identify which files are specific to 2 GPUs
+- identify which files can be safely generalized
+
+Do not delete or overwrite:
+
+- old logs
+- old CSVs
+- old Nsight traces
+- old report PDF
+- old figures
+
+Create a separate namespace for this experiment.
+
+Suggested structure:
+
+results/4gpu/
+logs/4gpu/
+profiles/4gpu/
+analysis/4gpu/
+reports/4gpu/
+
+or an equivalent clean layout.
+
+Also create a short note documenting:
+
+- which old files were reused unchanged
+- which old files were generalized
+- which new files were added
+
+--------------------------------------------------
+2. HARDWARE / ENVIRONMENT CHECK
+--------------------------------------------------
+
+Before training, verify the new machine.
+
+Save outputs of:
+
+nvidia-smi
+nvidia-smi topo -m
+nvidia-smi nvlink -s
+nvcc --version || true
+python --version
+
+Also run:
+
+python - <<'PY'
+import torch
+print("torch:", torch.__version__)
+print("torch CUDA:", torch.version.cuda)
+print("CUDA available:", torch.cuda.is_available())
+print("GPU count:", torch.cuda.device_count())
+for i in range(torch.cuda.device_count()):
+    print(i, torch.cuda.get_device_name(i))
+PY
+
+Expected:
+
+- 4 visible GPUs
+- all GPUs are NVIDIA A100-SXM4-40GB
+- all intended peer GPU links are visible
+
+Record the exact topology.
+
+Do NOT assume the 4-GPU topology is identical to the previous 2-GPU machine.
+
+The topology must be included in the final report.
+
+--------------------------------------------------
+3. NCCL 4-GPU BASELINE
+--------------------------------------------------
+
+Reuse the old NCCL benchmark methodology, but rerun it with 4 GPUs.
+
+Use the existing nccl-tests repository if present and valid.
+
+Run:
+
+all_reduce_perf
+all_gather_perf
+reduce_scatter_perf
+
+for:
+
+- 8 MiB → 1 GiB
+- factor 2
+- 4 GPUs
+
+Example:
+
+./build/all_reduce_perf -b 8M -e 1G -f 2 -g 4
+./build/all_gather_perf -b 8M -e 1G -f 2 -g 4
+./build/reduce_scatter_perf -b 8M -e 1G -f 2 -g 4
+
+Save raw logs.
+
+Parse into a NEW CSV for the 4-GPU experiment.
+
+Suggested columns:
+
+collective
+num_gpus
+size_bytes
+time_us
+algbw_GBs
+busbw_GBs
+mode
+
+Do not overwrite the previous 2-GPU NCCL CSV.
+
+Create comparison plots where useful:
+
+- 2GPU vs 4GPU AllReduce
+- 2GPU vs 4GPU AllGather
+- 2GPU vs 4GPU ReduceScatter
+
+The report should explain that changing N changes both:
+
+- communication volume
+- collective topology / scheduling behavior
+
+Therefore 4-GPU bus bandwidth should not be interpreted as simply "twice the 2-GPU bandwidth."
+
+--------------------------------------------------
+4. EXPERIMENT A — ORIGINAL MODEL, DP SCALING 1 → 2 → 4
+--------------------------------------------------
+
+Reuse the EXACT original model configuration from the 2-GPU experiment.
+
+Do not change:
+
+- architecture
+- precision
+- sequence length
+- optimizer
+- mock-data setup
+- micro batch
+- global batch for strong scaling
+
+Original model:
+
+num_layers = 24
+hidden_size = 2048
+ffn_hidden_size = 8192
+num_attention_heads = 16
+seq_length = 2048
+precision = BF16
+micro_batch_size = 1
+global_batch_size = 64
+
+Run:
+
+A1. 1 GPU
+TP=1
+PP=1
+DP=1
+
+A2. 2 GPUs
+TP=1
+PP=1
+DP=2
+
+A3. 4 GPUs
+TP=1
+PP=1
+DP=4
+
+For strong scaling:
+
+- keep global_batch_size = 64 for all three runs
+- use the same warmup and measured iteration policy as the old experiment
+
+Prefer:
+
+20 warmup iterations
+100 measured iterations
+
+Record:
+
+- mean step time
+- median step time
+- p95 step time
+- tokens/s
+- tokens/s/GPU
+- peak VRAM/GPU
+- average GPU utilization
+- average power if already supported
+- loss sanity check
+
+Compute:
+
+speedup_2 = throughput_DP2 / throughput_1GPU
+speedup_4 = throughput_DP4 / throughput_1GPU
+
+efficiency_2 = speedup_2 / 2
+efficiency_4 = speedup_4 / 4
+
+This should produce the clean scaling curve:
+
+GPU count:
+1
+2
+4
+
+throughput:
+measured
+measured
+measured
+
+scaling efficiency:
+100%
+measured
+measured
+
+The old 1GPU and DP2 numbers may be shown for historical comparison, but preferably rerun them on the new 4-GPU host if time allows because host-level software/hardware differences may affect absolute performance.
+
+If old and new numbers differ materially, report both and do not mix them as if they came from the same host.
+
+--------------------------------------------------
+5. EXPERIMENT B — DP WEAK SCALING 1 → 2 → 4
+--------------------------------------------------
+
+Use the original model again.
+
+Maintain approximately equal work per GPU.
+
+Suggested:
+
+1 GPU:
+global_batch = 64
+
+2 GPU DP:
+global_batch = 128
+
+4 GPU DP:
+global_batch = 256
+
+Keep:
+
+micro_batch_size = 1
+TP = 1
+PP = 1
+
+Measure:
+
+- step time
+- aggregate throughput
+- tokens/s/GPU
+- GPU utilization
+- peak memory
+
+Weak-scaling goal:
+
+GPU count × N
+work × N
+step time ≈ constant
+
+Compute a clearly defined weak-scaling efficiency.
+
+State the formula explicitly in the report.
+
+--------------------------------------------------
+6. CREATE A LARGER MODEL FOR CAPACITY EXPERIMENTS
+--------------------------------------------------
+
+Now introduce a NEW larger GPT-like model.
+
+Target starting point:
+
+num_layers = 20
+hidden_size = 3072
+ffn_hidden_size = 12288
+num_attention_heads = 24
+seq_length = 2048
+vocab_size ≈ 32000
+precision = BF16
+micro_batch_size = 1
+
+This should be around the low-2B parameter range.
+
+The exact parameter count must be calculated and reported.
+
+The design goal is:
+
+- 1GPU should OOM during training, or be clearly beyond a safe memory margin
+- TP2 should fit
+- PP2 should fit
+- TP2×DP2 should fit on 4 GPUs
+- PP2×DP2 should fit on 4 GPUs
+
+Do NOT arbitrarily shrink the model just to make 1GPU pass.
+
+The point is specifically to create a model where model parallelism is required.
+
+However:
+
+If the proposed model unexpectedly fits on 1 GPU with comfortable memory headroom, increase model size carefully.
+
+If TP2 or PP2 unexpectedly OOMs, reduce model size minimally.
+
+Any adjustment must be:
+
+- documented
+- applied consistently
+- frozen before comparing configurations
+
+Once a working large-model configuration is selected, freeze it for all main large-model runs.
+
+--------------------------------------------------
+7. LARGE MODEL CAPACITY SANITY CHECK
+--------------------------------------------------
+
+Before performance benchmarking, test whether each configuration fits.
+
+Run short smoke tests only.
+
+B1. 1 GPU
+TP=1
+PP=1
+DP=1
+
+Expected:
+OOM
+
+B2. 4 GPU pure DP
+TP=1
+PP=1
+DP=4
+
+Expected:
+also OOM if a full replica cannot fit on one GPU
+
+This is important.
+
+It experimentally demonstrates:
+
+DP increases throughput capacity but does not reduce the memory footprint of one model replica.
+
+B3. TP2
+2 GPUs
+TP=2
+PP=1
+DP=1
+
+Expected:
+fits
+
+B4. PP2
+2 GPUs
+TP=1
+PP=2
+DP=1
+
+Expected:
+fits
+
+Record:
+
+- fits / OOM
+- peak memory per GPU
+- failure stage if OOM
+
+Include this as a capacity table in the final report.
+
+--------------------------------------------------
+8. EXPERIMENT C — TP2 BASELINE ON LARGE MODEL
+--------------------------------------------------
+
+Use:
+
+2 GPUs
+TP=2
+PP=1
+DP=1
+
+Use the frozen large-model configuration.
+
+Use a fixed global batch suitable for the larger model.
+
+Prefer starting with:
+
+global_batch_size = 64
+
+but reduce only if necessary for a valid training run.
+
+If global batch changes, freeze it for all directly comparable large-model configs.
+
+Measure:
+
+- mean step time
+- median step time
+- p95 step time
+- tokens/s
+- tokens/s/GPU
+- peak VRAM/GPU
+- GPU utilization
+- loss sanity check
+
+Profile a short steady-state Nsight window.
+
+Record:
+
+- dominant NCCL kernels
+- % CUDA kernel time spent in NCCL
+- communication/computation pattern
+
+--------------------------------------------------
+9. EXPERIMENT D — TP2 × DP2
+--------------------------------------------------
+
+This is one of the MOST IMPORTANT new experiments.
+
+Use:
+
+4 GPUs
+TP=2
+PP=1
+DP=2
+
+Logical layout:
+
+Replica 0:
+GPU0 ↔ GPU1
+TP=2
+
+Replica 1:
+GPU2 ↔ GPU3
+TP=2
+
+The two TP groups are data-parallel replicas.
+
+Run two comparisons.
+
+D1. Strong comparison:
+same global batch as TP2 baseline
+
+TP2:
+2 GPUs
+DP=1
+
+TP2×DP2:
+4 GPUs
+DP=2
+
+same global batch
+
+D2. Weak comparison:
+double global batch for TP2×DP2
+
+Example:
+
+TP2:
+global_batch = 64
+
+TP2×DP2:
+global_batch = 128
+
+Compute:
+
+speedup
+
+and scaling efficiency:
+
+throughput_TP2DP2 /
+(2 × throughput_TP2)
+
+for the weak-scaling interpretation.
+
+Measure:
+
+- step time
+- tokens/s
+- tokens/s/GPU
+- peak VRAM
+- utilization
+- NCCL profile
+
+Important question:
+
+Does adding a DP dimension on top of TP scale much better than increasing TP degree?
+
+--------------------------------------------------
+10. EXPERIMENT E — PP2 BASELINE ON LARGE MODEL
+--------------------------------------------------
+
+Use:
+
+2 GPUs
+TP=1
+PP=2
+DP=1
+
+Split the model depth across two stages.
+
+Start with:
+
+micro_batch_size = 1
+
+Use the same global batch as the large-model TP baseline if practical.
+
+Measure:
+
+- step time
+- tokens/s
+- tokens/s/GPU
+- peak VRAM per stage
+- GPU utilization
+- stage imbalance
+- P2P SendRecv behavior
+
+Profile a short Nsight window.
+
+--------------------------------------------------
+11. EXPERIMENT F — PP2 × DP2
+--------------------------------------------------
+
+This is the second MOST IMPORTANT 4-GPU experiment.
+
+Use:
+
+4 GPUs
+TP=1
+PP=2
+DP=2
+
+Logical layout:
+
+Replica 0:
+GPU0 -> GPU1
+PP=2
+
+Replica 1:
+GPU2 -> GPU3
+PP=2
+
+Run:
+
+F1. strong scaling:
+same global batch as PP2
+
+F2. weak scaling:
+double global batch
+
+Measure:
+
+- throughput
+- step time
+- tokens/s/GPU
+- peak memory
+- utilization
+- scaling efficiency
+
+Compare:
+
+TP2×DP2
+vs
+PP2×DP2
+
+This directly compares two different ways to make one large model fit before using the remaining GPUs for DP.
+
+--------------------------------------------------
+12. EXPERIMENT G — PURE TP4
+--------------------------------------------------
+
+Use all 4 GPUs for one model replica:
+
+TP=4
+PP=1
+DP=1
+
+Purpose:
+
+Compare:
+
+TP2
+vs
+TP4
+
+Questions:
+
+- How much does single-replica throughput improve?
+- How much additional VRAM headroom is gained?
+- How much does tokens/s/GPU decrease?
+- How much does NCCL share increase?
+- Does communication overhead grow enough to make TP4 inefficient?
+
+Nsight profiling is required.
+
+Report:
+
+- dominant NCCL collectives
+- kernel time share
+- per-GPU utilization
+- any load imbalance
+
+--------------------------------------------------
+13. EXPERIMENT H — PURE PP4
+--------------------------------------------------
+
+Use:
+
+TP=1
+PP=4
+DP=1
+
+Split model layers across four pipeline stages.
+
+Choose a balanced split.
+
+Run a microbatch sweep.
+
+Suggested:
+
+micro_batch_size = 1
+micro_batch_size = 2
+micro_batch_size = 4
+
+Only run configurations that fit.
+
+Record:
+
+- number of microbatches
+- step time
+- tokens/s
+- tokens/s/GPU
+- peak VRAM per stage
+- GPU utilization per stage
+- pipeline bubble behavior
+
+Compare:
+
+PP2
+vs
+PP4
+
+Questions:
+
+- Does deeper pipeline parallelism require more microbatches?
+- How much larger are bubbles?
+- Does GEMM efficiency dominate the theoretical bubble formula?
+- How balanced are the four stages?
+
+Profile at least one representative PP4 configuration with Nsight.
+
+--------------------------------------------------
+14. EXPERIMENT I — TP2 × PP2
+--------------------------------------------------
+
+Use all 4 GPUs for one replica:
+
+TP=2
+PP=2
+DP=1
+
+Logical layout:
+
+Pipeline Stage 0:
+GPU0 ↔ GPU1
+TP=2
+
+Pipeline Stage 1:
+GPU2 ↔ GPU3
+TP=2
+
+This experiment is important because it combines:
+
+- intra-layer tensor collectives
+- inter-stage P2P communication
+
+Measure:
+
+- step time
+- throughput
+- tokens/s/GPU
+- peak VRAM
+- GPU utilization
+- NCCL kernel mix
+- SendRecv activity
+- pipeline bubbles
+
+Nsight profiling is REQUIRED.
+
+The final report should visually explain how TP and PP communications coexist in the same timeline.
+
+--------------------------------------------------
+15. FAIRNESS RULES
+--------------------------------------------------
+
+Main comparisons must be apples-to-apples.
+
+For each directly compared set, keep constant:
+
+- model architecture
+- sequence length
+- precision
+- optimizer
+- mock-data setup
+- global batch for strong-scaling comparison
+- warmup policy
+- measured-iteration policy
+
+Important:
+
+Do not use a tuned PP run with micro_batch_size=4 as if it were directly equivalent to an untuned DP or TP run at micro_batch_size=1.
+
+Separate:
+
+MAIN FAIR COMPARISON:
+micro_batch_size fixed
+
+from:
+
+TUNING / SENSITIVITY EXPERIMENTS:
+PP microbatch sweep
+optional sequence parallel
+other tuning
+
+The previous 2-GPU report showed that PP throughput could improve significantly when microbatch size increased because larger GEMMs became more efficient.
+
+Do not misinterpret such a result as pure parallel-scaling gain.
+
+--------------------------------------------------
+16. METRICS
+--------------------------------------------------
+
+For every benchmark:
+
+- config
+- model_id
+- num_gpus
+- TP
+- PP
+- DP
+- micro_batch_size
+- global_batch_size
+- sequence_length
+- mean_step_ms
+- median_step_ms
+- p95_step_ms
+- tokens_per_sec
+- tokens_per_sec_per_gpu
+- peak_memory_mb_per_gpu
+- average_gpu_util_per_gpu
+- average_power_per_gpu if available
+- correctness / loss sanity check
+
+Also record:
+
+- exact Megatron-LM commit
+- exact PyTorch version
+- exact CUDA version
+- exact command line
+- exact host GPU topology
+
+Use raw logs as source of truth.
+
+--------------------------------------------------
+17. RESULT FILES
+--------------------------------------------------
+
+Create NEW result files.
+
+Recommended:
+
+results/4gpu/nccl_results_4gpu.csv
+results/4gpu/training_results_4gpu.csv
+results/4gpu/capacity_results_4gpu.csv
+
+Keep old 2-GPU results untouched.
+
+Where helpful, also generate a combined comparison CSV that contains both old and new results, but preserve a source column such as:
+
+source_host
+experiment_generation
+num_gpus
+
+Do not silently merge incompatible measurements from different hosts.
+
+--------------------------------------------------
+18. NSIGHT SYSTEMS
+--------------------------------------------------
+
+Profile only short steady-state windows.
+
+Required profiles:
+
+- original-model DP4
+- large-model TP2
+- large-model TP2×DP2
+- large-model PP2
+- large-model PP2×DP2
+- TP4
+- PP4 representative run
+- TP2×PP2
+
+Do not profile full long runs.
+
+For each profile summarize:
+
+- dominant CUDA kernels
+- dominant NCCL kernels
+- percentage of CUDA kernel time in communication
+- timeline interpretation
+- obvious idle regions
+- load imbalance
+
+Keep the raw .nsys-rep files.
+
+--------------------------------------------------
+19. REQUIRED FIGURES
+--------------------------------------------------
+
+The final report should include useful plots.
+
+At minimum:
+
+1. Original model DP throughput:
+   1GPU vs DP2 vs DP4
+
+2. Original model DP strong-scaling efficiency:
+   1GPU vs 2GPU vs 4GPU
+
+3. Original model DP weak-scaling step time:
+   1GPU vs 2GPU vs 4GPU
+
+4. 4-GPU NCCL bandwidth curves
+
+5. Large-model capacity table / chart:
+   1GPU
+   DP4
+   TP2
+   PP2
+
+6. Large-model throughput comparison:
+   TP2
+   TP2×DP2
+   PP2
+   PP2×DP2
+   TP4
+   PP4
+   TP2×PP2
+
+7. Throughput per GPU
+
+8. Peak VRAM per GPU
+
+9. TP2 vs TP4 NCCL communication share
+
+10. PP2 vs PP4 microbatch / throughput relationship
+
+11. Nsight communication summary:
+    DP
+    TP
+    PP
+    TP×DP
+    PP×DP
+    TP×PP
+
+Do not create decorative figures with no analytical value.
+
+--------------------------------------------------
+20. REQUIRED REPORT PDF
+--------------------------------------------------
+
+At the end, generate a NEW PDF report for this experiment.
+
+Do NOT overwrite the old 2-GPU PDF.
+
+Suggested filename:
+
+report_4gpu.pdf
+
+Suggested location:
+
+reports/4gpu/report_4gpu.pdf
+
+Also keep the source used to generate the PDF.
+
+Reuse the existing 2-GPU report-generation code and style where practical.
+
+However, do not merely change the title and plug in numbers.
+
+The new report must reflect the new questions and 4-GPU experiment design.
+
+Suggested report structure:
+
+Title:
+Single-Node 4×A100 Parallelism Experiment Report
+
+Subtitle:
+Scaling and Multi-Dimensional Parallelism with Megatron-LM
+
+Sections:
+
+1. Executive Summary
+
+2. Hardware and Software Setup
+   - 4× A100
+   - topology
+   - software versions
+
+3. What Changed from the Previous 2-GPU Experiment
+   - original model reused for DP scaling
+   - new larger model introduced for capacity / model-parallel experiments
+   - new multi-dimensional parallelism tests
+
+4. 4-GPU NCCL Baseline
+
+5. Original Model: DP Scaling 1 → 2 → 4
+   - strong scaling
+   - weak scaling
+
+6. Large Model Configuration
+   - exact parameter count
+   - why it was chosen
+   - memory target
+
+7. Capacity Results
+   - 1GPU OOM?
+   - DP4 OOM?
+   - TP2 fit?
+   - PP2 fit?
+
+8. TP2 and TP2×DP2
+
+9. PP2 and PP2×DP2
+
+10. TP2 vs TP4
+
+11. PP2 vs PP4
+    - microbatch sweep
+    - pipeline bubble observations
+
+12. TP2×PP2
+
+13. Nsight Systems Communication Analysis
+
+14. Overall Throughput / Memory / Communication Tradeoff
+
+15. Answers to Study Questions
+
+16. Conclusions and Practical Guidance
+
+17. Reproducibility
+    - exact commands
+    - file paths
+    - git commit
+    - how to regenerate report
+
+Every numeric claim in the PDF should be traceable to:
+
+- raw logs
+- CSV files
+- Nsight summaries
+
+Do not invent or estimate benchmark numbers.
+
+--------------------------------------------------
+21. STUDY QUESTIONS THE REPORT MUST ANSWER
+--------------------------------------------------
+
+The final report must explicitly answer:
+
+1. How does pure DP scale from 1 to 2 to 4 GPUs for the original model?
+
+2. What is DP4 strong-scaling efficiency?
+
+3. What is DP4 weak-scaling efficiency?
+
+4. Does the new large model fit on one A100?
+
+5. Does pure DP4 solve the single-replica OOM problem?
+
+6. How much memory does TP2 save?
+
+7. How much memory does PP2 save?
+
+8. How well does TP2×DP2 scale relative to TP2?
+
+9. How well does PP2×DP2 scale relative to PP2?
+
+10. Which is better for this model:
+    TP2×DP2
+    or
+    PP2×DP2?
+
+11. What happens to throughput when TP degree grows from 2 to 4?
+
+12. What happens to NCCL communication share when TP grows from 2 to 4?
+
+13. What happens to pipeline bubbles when PP grows from 2 to 4?
+
+14. How does PP microbatch size affect:
+    - throughput
+    - VRAM
+    - utilization
+    - bubble behavior?
+
+15. What does TP2×PP2 look like in Nsight?
+
+16. Which 4-GPU strategy gives the highest aggregate throughput?
+
+17. Which strategy gives the lowest per-GPU memory use?
+
+18. Which strategy gives the best tokens/s/GPU?
+
+19. Which strategy communicates most frequently?
+
+20. What is the practical rule for choosing:
+    DP
+    TP
+    PP
+    TP×DP
+    PP×DP
+    TP×PP
+    on this single 4-GPU node?
+
+--------------------------------------------------
+22. EXECUTION ORDER
+--------------------------------------------------
+
+Use this order.
+
+Phase 0:
+Inspect old 2-GPU codebase.
+
+Phase 1:
+Hardware / software check.
+
+Phase 2:
+4-GPU NCCL benchmark.
+
+Phase 3:
+Original model:
+1GPU
+DP2
+DP4
+strong scaling
+weak scaling
+
+Phase 4:
+Build and freeze larger model.
+
+Phase 5:
+Capacity smoke tests:
+1GPU
+DP4
+TP2
+PP2
+
+Phase 6:
+TP2 benchmark.
+
+Phase 7:
+TP2×DP2 benchmark.
+
+Phase 8:
+PP2 benchmark.
+
+Phase 9:
+PP2×DP2 benchmark.
+
+Phase 10:
+TP4 benchmark.
+
+Phase 11:
+PP4 microbatch sweep.
+
+Phase 12:
+TP2×PP2 benchmark.
+
+Phase 13:
+Nsight profiling.
+
+Phase 14:
+CSV / plotting / analysis.
+
+Phase 15:
+Generate report_4gpu.pdf.
+
+Do not jump to later experiments before the earlier sanity checks pass.
+
+--------------------------------------------------
+23. AGENT BEHAVIOR RULES
+--------------------------------------------------
+
+Important instructions for the agent:
+
+- Inspect before modifying.
+- Reuse the old 2-GPU code where appropriate.
+- Do not rewrite everything from scratch unless there is a clear reason.
+- Do not assume a 2-GPU script automatically generalizes to 4 GPUs.
+- Preserve the old experiment.
+- Keep raw logs.
+- Keep commands reproducible.
+- Do not silently change model size, batch size, precision, optimizer, or parallelism settings.
+- If OOM occurs, diagnose first.
+- If configuration must change, document the change.
+- Do not enable hidden performance optimizations just to make one configuration win.
+- Keep main benchmark comparisons fair.
+- Treat measured logs as the only source of numeric truth.
+- Produce the PDF report automatically at the end.
+- Make the report reproducible from the repository.
+
+--------------------------------------------------
+24. DEFINITION OF DONE
+--------------------------------------------------
+
+The experiment is complete only when all of the following exist:
+
+- hardware/topology logs
+- 4-GPU NCCL logs
+- 4-GPU NCCL CSV
+- original-model 1GPU/DP2/DP4 results
+- DP strong-scaling analysis
+- DP weak-scaling analysis
+- frozen larger-model config
+- calculated larger-model parameter count
+- capacity table
+- TP2 result
+- TP2×DP2 result
+- PP2 result
+- PP2×DP2 result
+- TP4 result
+- PP4 microbatch sweep
+- TP2×PP2 result
+- GPU utilization logs
+- peak VRAM measurements
+- Nsight profiles
+- training_results_4gpu.csv
+- capacity_results_4gpu.csv
+- generated figures
+- report_4gpu.pdf
+- report source
+- reproducibility instructions
+
+Final priority:
+
+1. correctness
+2. reproducibility
+3. fair comparison
+4. analytical clarity
+5. performance tuning
+
+Do not optimize away the phenomenon we are trying to study.

@@ -1,0 +1,5 @@
+run_id,config,num_gpus,tp,pp,dp,status,fits,peak_alloc_mb,notes
+cap_1gpu,cap_1GPU,1,1,1,1,OOM,False,,smoke TRAIN_ITERS=5
+cap_dp4,cap_DP4,4,1,1,4,OOM,False,,smoke TRAIN_ITERS=5
+cap_tp2,cap_TP2,2,2,1,1,FITS,True,31343.55,smoke TRAIN_ITERS=5
+cap_pp2,cap_PP2,2,1,2,1,FITS,True,33172.09,smoke TRAIN_ITERS=5

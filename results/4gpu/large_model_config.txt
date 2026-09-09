@@ -1,0 +1,12 @@
+Frozen at Wed Sep  9 10:35:00 UTC 2026
+Source: plan_4gpu.txt §6 (adjusted only if capacity tests require)
+approx_params=3216506880 (3.217B)
+layers=20 hidden=3072 ffn=12288 heads=24 vocab=32000
+# Frozen large-model config for 4-GPU experiment
+export LARGE_NUM_LAYERS=20
+export LARGE_HIDDEN_SIZE=3072
+export LARGE_FFN_HIDDEN_SIZE=12288
+export LARGE_NUM_ATTENTION_HEADS=24
+export LARGE_SEQ_LENGTH=2048
+export LARGE_VOCAB_SIZE=32000
+export LARGE_GLOBAL_BATCH_SIZE=64

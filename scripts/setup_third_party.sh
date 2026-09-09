@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fetch pinned third_party deps for this lab (not vendored in git).
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TP="${ROOT}/third_party"
 mkdir -p "${TP}"
 

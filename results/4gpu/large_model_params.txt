@@ -1,0 +1,2 @@
+approx_params=3216506880 (3.217B)
+layers=20 hidden=3072 ffn=12288 heads=24 vocab=32000

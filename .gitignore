@@ -13,6 +13,13 @@ venv/
 # Nsight SQLite is regenerable from .nsys-rep via `nsys stats`
 profiles/*.sqlite
 profiles/*.sqlite-journal
+profiles/**/*.sqlite
+profiles/**/*.sqlite-journal
+
+# runtime pid / nohup noise
+**/*.pid
+**/nohup*.out
+logs/setup_third_party.log
 
 # nccl-tests object leftovers if someone builds in-tree without the setup script
 *.o
