@@ -1,0 +1,5 @@
+# Pinned third-party revisions (fetched by scripts/setup_third_party.sh)
+MEGATRON_URL=https://github.com/NVIDIA/Megatron-LM.git
+MEGATRON_REF=be85fc5df550f2236a850ecbf0dd1bf1b4cb4814
+NCCL_TESTS_URL=https://github.com/NVIDIA/nccl-tests.git
+NCCL_TESTS_REF=master

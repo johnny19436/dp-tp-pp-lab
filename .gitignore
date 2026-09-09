@@ -1,0 +1,34 @@
+# --- regenerable / bulky artifacts ---
+third_party/Megatron-LM/
+third_party/nccl-tests/
+data_cache/
+**/__pycache__/
+*.pyc
+*.pyo
+.Python
+*.egg-info/
+.venv/
+venv/
+
+# Nsight SQLite is regenerable from .nsys-rep via `nsys stats`
+profiles/*.sqlite
+profiles/*.sqlite-journal
+
+# nccl-tests object leftovers if someone builds in-tree without the setup script
+*.o
+*.a
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# accidental secrets
+.env
+.env.*
+*.pem
+credentials.json
+**/secrets.*
+logs/skopeo_copy.log

@@ -1,0 +1,79 @@
+=== Wed Sep  9 07:21:57 UTC 2026 NCCL microbenchmark ===
+----- all_reduce -----
+# nccl-tests version 2.20.0 (b4d5bee) nccl-headers=22902 nccl-library=22902
+# Collective test starting: all_reduce_perf
+# nThread 1 nGpus 2 minBytes 8388608 maxBytes 1073741824 step: 2(factor) warmup iters: 1 iters: 20 agg iters: 1 validation: 1 graph: 0 unalign: 0
+#
+# Using devices
+#  Rank  0 Group  0 Pid  18265 on 45185f713867 device  0 [0000:8d:00] NVIDIA A100-SXM4-40GB
+#  Rank  1 Group  0 Pid  18265 on 45185f713867 device  1 [0000:da:00] NVIDIA A100-SXM4-40GB
+#
+#                                                              out-of-place                       in-place
+#       size         count      type   redop    root     time   algbw   busbw  #wrong     time   algbw   busbw  #wrong
+#        (B)    (elements)                               (us)  (GB/s)  (GB/s)             (us)  (GB/s)  (GB/s)        
+     8388608       2097152     float     sum      -1   116.77   71.84   71.84       0   104.65   80.16   80.16       0
+    16777216       4194304     float     sum      -1   135.67  123.67  123.67       0   133.38  125.79  125.79       0
+    33554432       8388608     float     sum      -1   236.29  142.01  142.01       0   233.40  143.77  143.77       0
+    67108864      16777216     float     sum      -1   526.10  127.56  127.56       0   416.77  161.02  161.02       0
+   134217728      33554432     float     sum      -1   786.68  170.61  170.61       0   782.94  171.43  171.43       0
+   268435456      67108864     float     sum      -1  1492.55  179.85  179.85       0  1493.01  179.80  179.80       0
+   536870912     134217728     float     sum      -1  2882.61  186.24  186.24       0  2877.75  186.56  186.56       0
+  1073741824     268435456     float     sum      -1  5518.06  194.59  194.59       0  5512.27  194.79  194.79       0
+# Out of bounds values : 0 OK
+# Avg bus bandwidth    : 152.479 
+#
+# Collective test concluded: all_reduce_perf
+#
+
+----- all_gather -----
+# nccl-tests version 2.20.0 (b4d5bee) nccl-headers=22902 nccl-library=22902
+# Collective test starting: all_gather_perf
+# nThread 1 nGpus 2 minBytes 8388608 maxBytes 1073741824 step: 2(factor) warmup iters: 1 iters: 20 agg iters: 1 validation: 1 graph: 0 unalign: 0
+#
+# Using devices
+#  Rank  0 Group  0 Pid  18285 on 45185f713867 device  0 [0000:8d:00] NVIDIA A100-SXM4-40GB
+#  Rank  1 Group  0 Pid  18285 on 45185f713867 device  1 [0000:da:00] NVIDIA A100-SXM4-40GB
+#
+#                                                              out-of-place                       in-place
+#       size         count      type   redop    root     time   algbw   busbw  #wrong     time   algbw   busbw  #wrong
+#        (B)    (elements)                               (us)  (GB/s)  (GB/s)             (us)  (GB/s)  (GB/s)        
+     8388608       1048576     float    none      -1    72.18  116.21   58.11       0    61.69  135.97   67.98       0
+    16777216       2097152     float    none      -1    97.62  171.86   85.93       0    86.66  193.59   96.80       0
+    33554432       4194304     float    none      -1   164.80  203.60  101.80       0   143.44  233.93  116.96       0
+    67108864       8388608     float    none      -1   280.05  239.63  119.82       0   252.96  265.29  132.65       0
+   134217728      16777216     float    none      -1   516.86  259.68  129.84       0   462.40  290.26  145.13       0
+   268435456      33554432     float    none      -1   976.89  274.79  137.39       0   869.40  308.76  154.38       0
+   536870912      67108864     float    none      -1  1884.55  284.88  142.44       0  1656.48  324.10  162.05       0
+  1073741824     134217728     float    none      -1  3561.57  301.48  150.74       0  3119.12  344.24  172.12       0
+# Out of bounds values : 0 OK
+# Avg bus bandwidth    : 123.384 
+#
+# Collective test concluded: all_gather_perf
+#
+
+----- reduce_scatter -----
+# nccl-tests version 2.20.0 (b4d5bee) nccl-headers=22902 nccl-library=22902
+# Collective test starting: reduce_scatter_perf
+# nThread 1 nGpus 2 minBytes 8388608 maxBytes 1073741824 step: 2(factor) warmup iters: 1 iters: 20 agg iters: 1 validation: 1 graph: 0 unalign: 0
+#
+# Using devices
+#  Rank  0 Group  0 Pid  18325 on 45185f713867 device  0 [0000:8d:00] NVIDIA A100-SXM4-40GB
+#  Rank  1 Group  0 Pid  18325 on 45185f713867 device  1 [0000:da:00] NVIDIA A100-SXM4-40GB
+#
+#                                                              out-of-place                       in-place
+#       size         count      type   redop    root     time   algbw   busbw  #wrong     time   algbw   busbw  #wrong
+#        (B)    (elements)                               (us)  (GB/s)  (GB/s)             (us)  (GB/s)  (GB/s)        
+     8388608       1048576     float     sum      -1    66.34  126.44   63.22       0    60.65  138.30   69.15       0
+    16777216       2097152     float     sum      -1    86.82  193.24   96.62       0    85.81  195.53   97.76       0
+    33554432       4194304     float     sum      -1   145.71  230.28  115.14       0   145.77  230.18  115.09       0
+    67108864       8388608     float     sum      -1   248.93  269.59  134.80       0   248.72  269.82  134.91       0
+   134217728      16777216     float     sum      -1   461.98  290.53  145.26       0   462.93  289.93  144.96       0
+   268435456      33554432     float     sum      -1   868.21  309.18  154.59       0   876.37  306.30  153.15       0
+   536870912      67108864     float     sum      -1  1683.14  318.97  159.48       0  1688.80  317.90  158.95       0
+  1073741824     134217728     float     sum      -1  3272.04  328.16  164.08       0  3276.25  327.74  163.87       0
+# Out of bounds values : 0 OK
+# Avg bus bandwidth    : 129.44 
+#
+# Collective test concluded: reduce_scatter_perf
+#
+

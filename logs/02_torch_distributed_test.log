@@ -1,0 +1,5 @@
+rank 1 local_rank 1 world_size 2 -> cuda:1 (NVIDIA A100-SXM4-40GB)
+rank 0 local_rank 0 world_size 2 -> cuda:0 (NVIDIA A100-SXM4-40GB)
+rank 1 all_reduce sum=3 expected=3
+rank 0 all_reduce sum=3 expected=3
+torch.distributed sanity check PASSED

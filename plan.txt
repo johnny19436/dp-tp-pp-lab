@@ -1,0 +1,840 @@
+# Single-Node 2×A100 DP / TP / PP Experiment Plan
+
+## Goal
+
+I have one Vast.ai node with:
+
+- 2 × NVIDIA A100-SXM4-40GB
+- GPU0 ↔ GPU1 topology = NV12
+- 40 GB VRAM per GPU
+- single node only
+
+The goal is to experimentally understand and compare:
+
+1. Single-GPU baseline
+2. Data Parallel (DP=2)
+3. Tensor Parallel (TP=2)
+4. Pipeline Parallel (PP=2)
+
+Focus on:
+
+- training throughput
+- step time
+- scaling efficiency
+- GPU utilization
+- VRAM usage
+- communication behavior
+- NCCL collectives
+- pipeline bubbles
+- Nsight Systems timelines
+
+Use Megatron-LM / Megatron Core with mock data so dataset I/O is not part
+of the benchmark.
+
+Do NOT work on:
+
+- multi-node
+- RDMA / InfiniBand
+- FSDP / ZeRO
+- FP8
+- distributed optimizer
+- communication overlap optimizations
+- exotic parallelism such as CP / EP
+
+Keep the experiment simple and controlled first.
+
+---
+
+# 0. Repository Layout
+
+Create:
+
+/workspace/dp-tp-pp-lab/
+
+with roughly:
+
+.
+├── README.md
+├── scripts/
+│   ├── 00_system_check.sh
+│   ├── 01_nccl_benchmark.sh
+│   ├── 02_torch_distributed_test.py
+│   ├── 10_baseline_1gpu.sh
+│   ├── 11_dp2.sh
+│   ├── 12_tp2.sh
+│   ├── 13_pp2.sh
+│   ├── 14_dp_weak_scaling.sh
+│   ├── 15_pp_microbatch_sweep.sh
+│   ├── monitor_gpu.sh
+│   └── profile_nsys.sh
+├── third_party/
+│   ├── nccl-tests/
+│   └── Megatron-LM/
+├── logs/
+├── profiles/
+├── results/
+│   ├── nccl_results.csv
+│   └── training_results.csv
+└── analysis/
+    └── summarize.py
+
+Every experiment should save raw logs.
+
+Do not rely only on terminal output.
+
+---
+
+# 1. Environment Inspection
+
+First inspect the machine without changing anything.
+
+Run and save:
+
+nvidia-smi
+nvidia-smi topo -m
+nvidia-smi nvlink -s
+nvcc --version || true
+python --version
+
+Also inspect PyTorch:
+
+python - <<'PY'
+import torch
+
+print("torch:", torch.__version__)
+print("torch CUDA:", torch.version.cuda)
+print("CUDA available:", torch.cuda.is_available())
+print("GPU count:", torch.cuda.device_count())
+
+for i in range(torch.cuda.device_count()):
+    print(i, torch.cuda.get_device_name(i))
+PY
+
+Expected:
+
+- 2 GPUs
+- NVIDIA A100-SXM4-40GB
+- GPU0 ↔ GPU1 = NV12
+
+Record:
+
+- driver version
+- CUDA runtime/toolkit version
+- PyTorch version
+- GPU names
+- topology
+
+Do not upgrade the NVIDIA driver.
+
+Use the existing environment if possible.
+
+---
+
+# 2. NCCL Microbenchmark
+
+Before running a model, benchmark raw GPU↔GPU communication.
+
+Clone NVIDIA nccl-tests into:
+
+third_party/nccl-tests
+
+Build it.
+
+Run:
+
+./build/all_reduce_perf \
+    -b 8M -e 1G -f 2 -g 2
+
+./build/all_gather_perf \
+    -b 8M -e 1G -f 2 -g 2
+
+./build/reduce_scatter_perf \
+    -b 8M -e 1G -f 2 -g 2
+
+Save complete output.
+
+Extract for every message size:
+
+- bytes
+- time
+- algbw
+- busbw
+
+Generate:
+
+results/nccl_results.csv
+
+Columns:
+
+collective,size_bytes,time_us,algbw_GBs,busbw_GBs
+
+Purpose:
+
+AllReduce
+→ relevant to DP gradient synchronization
+
+AllGather
+→ relevant to sharded/tensor communication
+
+ReduceScatter
+→ relevant to tensor/sharded communication
+
+This establishes the communication baseline of the NVLink connection.
+
+---
+
+# 3. Minimal torch.distributed Sanity Test
+
+Before Megatron, write a very small PyTorch program using:
+
+torch.distributed.init_process_group("nccl")
+
+Run with:
+
+torchrun --standalone --nproc_per_node=2 \
+    scripts/02_torch_distributed_test.py
+
+Test:
+
+- rank
+- local_rank
+- world_size
+- barrier
+- all_reduce
+
+Print something like:
+
+rank 0 -> cuda:0
+rank 1 -> cuda:1
+
+and verify both ranks get the same AllReduce result.
+
+This step is only a sanity check.
+
+Do not build the DP/TP/PP implementation manually.
+
+---
+
+# 4. Install / Validate Megatron-LM
+
+Clone Megatron-LM into:
+
+third_party/Megatron-LM
+
+Record the exact git commit hash:
+
+git rev-parse HEAD
+
+Use Megatron's current supported installation method.
+
+Prefer the existing PyTorch/CUDA environment and install only missing
+dependencies.
+
+Do not unnecessarily replace the CUDA environment.
+
+Find the currently supported GPT training entry point and verify its CLI
+instead of blindly assuming old Megatron-LM command-line arguments.
+
+Run the smallest possible mock-data 2-GPU smoke test first.
+
+Only proceed when Megatron successfully completes forward/backward training.
+
+---
+
+# 5. Primary Model Configuration
+
+Use one identical GPT-like model for the main experiments.
+
+Target configuration:
+
+num_layers = 24
+hidden_size = 2048
+ffn_hidden_size = 8192
+num_attention_heads = 16
+
+sequence_length = 2048
+
+precision = BF16
+
+micro_batch_size = 1
+global_batch_size = 64
+
+mock/random token data
+
+vocab_size ≈ 32000
+
+Start with:
+
+20 warmup iterations
+100 measured iterations
+
+Total ≈ 120 iterations.
+
+Important:
+
+Keep model architecture, sequence length, precision and optimizer identical
+for baseline / DP / TP / PP.
+
+If the 1-GPU configuration OOMs, reduce model size in this order:
+
+1. num_layers: 24 -> 20
+2. hidden_size: 2048 -> 1792
+3. num_layers: 20 -> 18
+
+Once a configuration fits, freeze it for ALL main experiments.
+
+Do not use a different model for DP, TP and PP.
+
+---
+
+# 6. Metrics
+
+For every run collect:
+
+- mean step time
+- median step time
+- p95 step time
+- tokens/sec
+- tokens/sec/GPU
+- peak VRAM per GPU
+- average GPU utilization
+- average power if convenient
+- training loss as a correctness sanity check
+
+Compute:
+
+tokens_per_step =
+    global_batch_size × sequence_length
+
+tokens_per_second =
+    tokens_per_step / step_time_seconds
+
+Do not include the first 20 warmup iterations.
+
+Store final measurements in:
+
+results/training_results.csv
+
+Suggested columns:
+
+run_id,
+config,
+num_gpus,
+tp,
+pp,
+dp,
+micro_batch,
+global_batch,
+seq_len,
+mean_step_ms,
+median_step_ms,
+p95_step_ms,
+tokens_per_sec,
+tokens_per_sec_per_gpu,
+gpu0_peak_mem_mb,
+gpu1_peak_mem_mb,
+gpu0_avg_util,
+gpu1_avg_util
+
+---
+
+# 7. Experiment A — Single GPU Baseline
+
+Configuration:
+
+GPUs = 1
+TP = 1
+PP = 1
+DP = 1
+
+Use only GPU0.
+
+Purpose:
+
+Establish the single-GPU reference.
+
+Measure:
+
+- step time
+- tokens/s
+- VRAM
+- utilization
+
+Define this throughput as:
+
+speedup = 1.0×
+
+---
+
+# 8. Experiment B — Pure DP
+
+Configuration:
+
+GPUs = 2
+TP = 1
+PP = 1
+
+Therefore:
+
+DP = world_size / (TP × PP)
+   = 2
+
+Conceptually:
+
+GPU0:
+full model + different data
+
+GPU1:
+full model + different data
+
+backward
+   ↓
+gradient AllReduce
+
+Keep:
+
+global_batch_size = 64
+
+This is the strong-scaling experiment.
+
+Compare against the 1-GPU baseline.
+
+Calculate:
+
+DP speedup =
+    throughput_DP2 / throughput_1GPU
+
+DP scaling efficiency =
+    throughput_DP2 /
+    (2 × throughput_1GPU)
+
+Example:
+
+1 GPU = 100k tokens/s
+DP2   = 185k tokens/s
+
+speedup = 1.85×
+efficiency = 92.5%
+
+Expected observation:
+
+DP should usually provide the highest aggregate throughput of the three
+2-GPU strategies when the model already fits on one GPU.
+
+---
+
+# 9. Experiment C — DP Weak Scaling
+
+Now test a different question.
+
+Baseline:
+
+1 GPU
+global_batch = 64
+
+DP2:
+
+2 GPUs
+global_batch = 128
+
+Keep approximately the same amount of work per GPU.
+
+Compare:
+
+step_time_1GPU
+vs
+step_time_DP2
+
+Ideal weak scaling:
+
+GPU count ×2
+work ×2
+step time ≈ unchanged
+
+Calculate weak-scaling efficiency.
+
+This will later be useful when extending the experiment to multiple nodes.
+
+---
+
+# 10. Experiment D — Pure TP
+
+Configuration:
+
+GPUs = 2
+TP = 2
+PP = 1
+DP = 1
+
+Conceptually:
+
+            one Transformer layer
+
+        ┌──────────┴──────────┐
+      GPU0                   GPU1
+  part of tensor         part of tensor
+        │                     │
+        └──── collective ─────┘
+
+Both GPUs cooperate on the same model replica.
+
+Keep:
+
+global_batch_size = 64
+
+Initially DO NOT enable extra optimizations such as:
+
+- sequence parallel
+- async communication overlap
+- FP8
+
+The first goal is to isolate basic TP behavior.
+
+Optional later experiment:
+
+TP=2 + sequence parallel
+
+as a separate run.
+
+Measure:
+
+- throughput
+- step time
+- VRAM
+- GPU utilization
+
+Important comparison:
+
+1GPU vs TP2
+
+This answers:
+
+"Does using two GPUs to compute one model replica make a step faster?"
+
+Also compare:
+
+TP2 vs DP2
+
+This demonstrates the difference between:
+
+DP:
+two replicas doing different work
+
+TP:
+two GPUs cooperating on one replica
+
+Expected:
+
+TP should show much more frequent inter-GPU communication than DP.
+
+---
+
+# 11. Experiment E — Pure PP
+
+Configuration:
+
+GPUs = 2
+TP = 1
+PP = 2
+DP = 1
+
+Conceptually:
+
+GPU0:
+layers 0 ~ 11
+      ↓
+activation communication
+
+GPU1:
+layers 12 ~ 23
+
+Keep the same model and global batch.
+
+Measure:
+
+- tokens/s
+- step time
+- VRAM per GPU
+- utilization
+
+Important observation:
+
+PP splits layers rather than tensors.
+
+Look for:
+
+- pipeline startup
+- pipeline drain
+- idle periods
+- pipeline bubble
+
+PP does NOT directly make each Transformer layer compute faster.
+
+---
+
+# 12. Experiment F — PP Microbatch Sweep
+
+This is important.
+
+Keep:
+
+PP = 2
+global_batch = 64
+
+Try:
+
+micro_batch_size = 1
+micro_batch_size = 2
+micro_batch_size = 4
+
+Only use configurations that fit in VRAM.
+
+For DP=1:
+
+micro batch 1
+→ ~64 microbatches
+
+micro batch 2
+→ ~32 microbatches
+
+micro batch 4
+→ ~16 microbatches
+
+Compare:
+
+- step time
+- tokens/s
+- GPU utilization
+- peak memory
+
+Goal:
+
+understand the tradeoff between:
+
+more microbatches
+→ smaller pipeline bubble
+
+versus
+
+larger microbatch
+→ potentially better GEMM efficiency
+→ higher memory usage
+
+Produce a table showing PP throughput vs microbatch size.
+
+---
+
+# 13. GPU Monitoring
+
+During each training benchmark run, collect GPU statistics separately.
+
+Use something such as:
+
+nvidia-smi dmon
+
+or another lightweight NVIDIA monitoring tool.
+
+Record approximately once per second:
+
+- SM utilization
+- memory
+- power
+- clocks
+
+Do not let monitoring significantly disturb the benchmark.
+
+Save one monitoring log per experiment.
+
+---
+
+# 14. Nsight Systems Profiling
+
+After the normal benchmarks are complete, profile only a SHORT interval.
+
+Do not profile the entire 120-step run.
+
+Profile approximately 5 steady-state iterations after warmup for:
+
+1. DP2
+2. TP2
+3. PP2
+
+Store traces in:
+
+profiles/
+
+We want to visually identify:
+
+## DP
+
+Expected pattern:
+
+compute
+   ↓
+gradient synchronization / AllReduce
+
+Communication is concentrated around backward gradient synchronization.
+
+## TP
+
+Expected pattern:
+
+GEMM
+↓
+NCCL
+↓
+GEMM
+↓
+NCCL
+↓
+...
+
+Communication should be much more frequent because tensors are partitioned
+inside layers.
+
+## PP
+
+Expected pattern:
+
+GPU0:
+compute ─ compute ─ compute ...
+
+GPU1:
+        compute ─ compute ─ compute ...
+
+Look for pipeline offset and idle bubbles.
+
+Generate either screenshots or useful nsys textual summaries.
+
+---
+
+# 15. Final Comparison Table
+
+Produce this table:
+
+| Config | GPUs | TP | PP | DP | Tokens/s | Speedup | Tokens/s/GPU | Peak VRAM/GPU | GPU Util |
+|--------|-----:|---:|---:|---:|---------:|--------:|-------------:|--------------:|---------:|
+| 1GPU   | 1 | 1 | 1 | 1 | | 1.00× | | | |
+| DP2    | 2 | 1 | 1 | 2 | | | | | |
+| TP2    | 2 | 2 | 1 | 1 | | | | | |
+| PP2    | 2 | 1 | 2 | 1 | | | | | |
+
+Also produce:
+
+| Config | Main communication | Main bottleneck |
+|--------|--------------------|-----------------|
+| DP2 | gradient AllReduce | synchronization |
+| TP2 | frequent tensor collectives | communication latency/bandwidth |
+| PP2 | activation/gradient P2P | pipeline bubble |
+
+---
+
+# 16. Questions the Final Report Must Answer
+
+At the end, write README.md explaining the results and explicitly answer:
+
+1. How much faster is DP=2 than one GPU?
+2. What is DP scaling efficiency?
+3. For the same global batch, is TP=2 faster than one GPU?
+4. Is TP=2 more or less efficient than DP=2?
+5. How much VRAM does TP save?
+6. How much VRAM does PP save?
+7. How does PP throughput change as the number of microbatches changes?
+8. What do DP, TP and PP look like in an Nsight timeline?
+9. Which parallelism strategy communicates most frequently?
+10. Why is DP normally preferred when the model already fits on one GPU?
+11. Why might TP still be useful even if the model fits on one GPU?
+12. Why is PP mainly useful for larger models / larger GPU counts?
+
+---
+
+# 17. Optional Capacity Experiment
+
+Only after all main experiments work.
+
+Gradually increase model size until the 1-GPU baseline OOMs.
+
+Then test the same model with:
+
+DP2
+TP2
+PP2
+
+Record:
+
+| Configuration | Fits? | Peak memory |
+|---------------|------|-------------|
+| 1GPU | | |
+| DP2 | | |
+| TP2 | | |
+| PP2 | | |
+
+Expected concept:
+
+DP:
+replicates the model
+→ does not fundamentally solve per-replica model capacity
+
+TP:
+splits tensors/layers across GPUs
+→ can reduce per-GPU model memory
+
+PP:
+splits layers across stages
+→ can reduce per-GPU model memory
+
+Do not allow this optional experiment to delay the main benchmark.
+
+---
+
+# 18. Execution Order
+
+Follow exactly this order:
+
+1. System/environment check
+2. NCCL benchmark
+3. torch.distributed sanity test
+4. Megatron-LM installation
+5. Megatron mock-data smoke test
+6. Freeze model configuration
+7. 1-GPU baseline
+8. DP=2 strong scaling
+9. DP=2 weak scaling
+10. TP=2
+11. PP=2
+12. PP microbatch sweep
+13. Nsight DP profile
+14. Nsight TP profile
+15. Nsight PP profile
+16. Generate CSV results
+17. Generate summary report
+18. Optional capacity experiment
+
+Do not jump ahead if an earlier sanity check fails.
+
+---
+
+# Definition of Done
+
+The experiment is complete when we have:
+
+- confirmed 2× A100 and NV12 topology
+- NCCL AllReduce benchmark
+- NCCL AllGather benchmark
+- NCCL ReduceScatter benchmark
+- successful 1GPU training
+- successful DP2 training
+- successful TP2 training
+- successful PP2 training
+- DP strong scaling number
+- DP weak scaling number
+- PP microbatch sweep
+- GPU utilization measurements
+- peak VRAM measurements
+- three Nsight traces
+- training_results.csv
+- nccl_results.csv
+- final README with conclusions
+
+When implementing this plan, prioritize reproducibility and simplicity over
+maximum performance.
