@@ -1,3 +1,5 @@
+# dp-tp-pp-lab
+
 # Single-Node 2×A100 DP / TP / PP Lab
 
 Reproducible Megatron-LM study of **Data Parallel / Tensor Parallel / Pipeline Parallel** on one NVLink node. Measured on 2×A100; designed to extend to **8×GPU** (see [`docs/EXTENDING_8GPU.md`](docs/EXTENDING_8GPU.md)).
